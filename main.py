@@ -13,7 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoAlertPresentException, TimeoutException
+from selenium.common.exceptions import NoAlertPresentException, TimeoutException, NoSuchElementException
 
 # --- [1. 설정] ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -39,6 +39,7 @@ def get_browser():
 
 def handle_alert(driver):
     try:
+        # 3초 동안 팝업 기다림
         WebDriverWait(driver, 3).until(EC.alert_is_present())
         alert = driver.switch_to.alert
         print(f"⚠️ 팝업창 발견: {alert.text}")
@@ -55,63 +56,79 @@ def login_hongik(driver):
     time.sleep(3)
     handle_alert(driver)
     
-    # 📸 [1] 처음 화면 찍기
     driver.save_screenshot("1_start_page.png")
 
+    # [1] 로그인 버튼 클릭
     try:
-        # ✅ [수정된 부분] 먼저 '로그인' 버튼을 찾아서 클릭해야 함!
-        # 화면에 보이는 '로그인' 글자가 들어간 버튼/링크를 찾음
         print("🖱️ '로그인' 버튼 찾는 중...")
-        try:
-            # 통합 로그인 버튼 (보통 a 태그나 button 태그)
-            login_btn = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '로그인')] | //button[contains(text(), '로그인')]"))
-            )
-            login_btn.click()
-            print("🖱️ 버튼 클릭 성공! 로그인 페이지로 이동 중...")
-            time.sleep(3)
-        except:
-            print("⚠️ 로그인 버튼을 못 찾았습니다. 이미 로그인 페이지거나, 로그인이 되어있을 수 있습니다.")
-
-        # 📸 [2] 버튼 누른 후 화면 찍기
-        driver.save_screenshot("2_login_form.png")
-
-        # 이제 아이디/비번 입력 (홍익대 통합로그인 페이지 구조 예상)
-        print("⌨️ 아이디/비번 입력 시도...")
+        # 통합 로그인 버튼 (보통 a 태그나 button 태그)
+        login_btn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '로그인')] | //button[contains(text(), '로그인')]"))
+        )
         
-        # 아이디 입력칸 찾기 (name="USER_ID" 또는 id="USER_ID")
-        try:
-            id_input = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID'], input[id='USER_ID'], input[type='text']"))
-            )
-            id_input.clear()
-            id_input.send_keys(HONGIK_ID)
-        except:
-            print("❌ 아이디 입력칸을 못 찾음")
-
-        # 비번 입력칸 찾기
-        try:
-            pw_input = driver.find_element(By.CSS_SELECTOR, "input[type='password']")
-            pw_input.clear()
-            pw_input.send_keys(HONGIK_PW)
-            pw_input.send_keys(Keys.RETURN) # 엔터
-        except:
-            print("❌ 비번 입력칸을 못 찾음")
+        # 버튼을 누르기 전에 현재 창 개수 기억
+        original_window = driver.current_window_handle
+        windows_before = driver.window_handles
         
-        print("⏳ 로그인 정보 전송 완료. 대기 중...")
-        time.sleep(5)
-        handle_alert(driver)
+        login_btn.click()
+        print("🖱️ 버튼 클릭 성공!")
+        time.sleep(3)
         
-        # 📸 [3] 로그인 완료 후 화면
-        driver.save_screenshot("3_after_login.png")
+        # [2] 새 창(팝업)이 떴는지 확인하고 거기로 이동! (중요)
+        windows_after = driver.window_handles
+        if len(windows_after) > len(windows_before):
+            print("🚀 새 창(팝업)이 감지되었습니다! 시선을 이동합니다.")
+            for window in windows_after:
+                if window != original_window:
+                    driver.switch_to.window(window)
+                    break
         
     except Exception as e:
-        print(f"⚠️ 로그인 과정 중 에러: {e}")
-        driver.save_screenshot("error_login.png")
+        print(f"⚠️ 로그인 버튼 클릭 중 문제: {e}")
+
+    # [3] 아이디/비번 입력 (이제 진짜 로그인 화면일 것임)
+    try:
+        print("⌨️ 입력창 찾는 중...")
+        # 페이지가 하얗게 뜨는 걸 방지하기 위해 입력창이 나올 때까지 최대 10초 대기
+        id_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID'], input[id='USER_ID'], input[type='text']"))
+        )
+        
+        driver.save_screenshot("2_login_ready.png") # 입력 직전 찰칵
+        
+        id_input.clear()
+        id_input.send_keys(HONGIK_ID)
+        
+        pw_input = driver.find_element(By.CSS_SELECTOR, "input[type='password']")
+        pw_input.clear()
+        pw_input.send_keys(HONGIK_PW)
+        
+        # 엔터 치고 기다리기
+        pw_input.send_keys(Keys.RETURN)
+        print("⏳ 엔터 입력함. 로그인 처리 대기 중...")
+        
+        # 화면이 넘어갈 때까지 충분히 기다림 (10초)
+        time.sleep(10)
+        
+        # 혹시 팝업(비번 변경 등)이 뜨면 닫음
+        handle_alert(driver)
+        
+        # 만약 새 창에서 로그인했다면, 다시 원래 창으로 돌아와야 할 수도 있음
+        if len(driver.window_handles) > 1:
+            driver.close() # 팝업 닫기
+            driver.switch_to.window(original_window) # 본래 창으로 복귀
+            print("🔄 본래 창으로 복귀했습니다.")
+            time.sleep(2)
+
+        driver.save_screenshot("3_login_finished.png") # 로그인 완료 후 찰칵
+        
+    except Exception as e:
+        print(f"⚠️ 아이디/비번 입력 실패: {e}")
+        driver.save_screenshot("error_login_input.png")
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_debug_v4")
+        geolocator = Nominatim(user_agent="hongik_final_debug_v5")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location:
@@ -166,16 +183,14 @@ def main():
     driver = get_browser()
     
     try:
-        # 로그인 수행
         login_hongik(driver)
         
-        # 로그인 후 게시판으로 다시 이동
         print(f"🌐 게시판으로 이동: {TARGET_URL}")
         driver.get(TARGET_URL)
-        time.sleep(3)
-        handle_alert(driver)
+        # 페이지 로딩 완료될 때까지 확실히 기다림
+        time.sleep(5)
         
-        # 📸 [4] 최종 게시판 화면
+        # 📸 [4] 최종 게시판 화면 (여기에 글목록이 보여야 성공!)
         driver.save_screenshot("4_board_list.png")
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -222,7 +237,7 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견. 새 공고 없음. (버튼 클릭 성공 🟢)"
+            msg = f"게시글 {len(rows)}개 발견됨. 새 글 없음. (창 전환 기능 추가됨 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
