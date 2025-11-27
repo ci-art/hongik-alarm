@@ -1,147 +1,58 @@
 import requests
 from bs4 import BeautifulSoup
-import os
-import telegram
-import asyncio
 import urllib3
-from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
 
 # SSL 경고 무시
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- [1. 설정] ---
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-CHAT_ID = os.environ.get('CHAT_ID')
-
-# 🚨 내 집 좌표 고정 (송파구 백제고분로 12길 8-26 근처)
-MY_HOME_COORDS = (37.5088, 127.0817)
-
 TARGET_URL = "https://inno.hongik.ac.kr/EmpInfo/Part/B/partb0020s.aspx?mc=0638"
-BASE_URL = "https://inno.hongik.ac.kr"
-FILE_PATH = "sent_posts.txt"
 
-# --- [2. 학교 좌표 찾기 함수] ---
-def get_school_coords(school_name, region):
+def debug_site():
+    print("----- [웹사이트 투시 시작] -----")
+    
     try:
-        geolocator = Nominatim(user_agent="hongik_job_bot_final")
-        query = f"서울 {region} {school_name}"
-        location = geolocator.geocode(query)
+        # 1. 봇이 아닌 척 위장하기 (User-Agent)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
         
-        if not location:
-             location = geolocator.geocode(f"{region} {school_name}")
-             
-        if location:
-            return (location.latitude, location.longitude)
-        return None
-    except:
-        return None
-
-def calculate_distance(coords1, coords2):
-    try:
-        dist = geodesic(coords1, coords2).km
-        return round(dist, 2)
-    except:
-        return 9999
-
-# --- [3. 메인 로직] ---
-def analyze_schools(link):
-    print(f"--> 상세 페이지 분석 중: {link}")
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(link, headers=headers, verify=False)
-        response.encoding = 'utf-8'
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        tables = soup.select('table')
-        results = []
-
-        for table in tables:
-            rows = table.select('tr')
-            for row in rows:
-                cols = row.select('td')
-                if len(cols) >= 3:
-                    region = cols[1].get_text(strip=True)
-                    school_name = cols[2].get_text(strip=True)
-                    
-                    school_coords = get_school_coords(school_name, region)
-                    
-                    if school_coords:
-                        km = calculate_distance(MY_HOME_COORDS, school_coords)
-                        results.append({'name': school_name, 'region': region, 'km': km})
-        
-        results.sort(key=lambda x: x['km'])
-        return results
-
-    except Exception as e:
-        print(f"분석 중 에러: {e}")
-        return []
-
-async def send_message(text):
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(chat_id=CHAT_ID, text=text)
-
-def main():
-    if os.path.exists(FILE_PATH):
-        with open(FILE_PATH, "r", encoding="utf-8") as f:
-            sent_posts = f.read().splitlines()
-    else:
-        sent_posts = []
-
-    print(f"🏠 내 집 좌표 고정됨: {MY_HOME_COORDS}")
-
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(TARGET_URL, headers=headers, verify=False)
-        response.encoding = 'utf-8'
-        soup = BeautifulSoup(response.text, 'html.parser')
+        response.encoding = 'utf-8' # 한글 깨짐 방지
         
-        rows = soup.select('table tbody tr')
-        if not rows:
-            rows = soup.select('table tr')
+        print(f"📡 접속 상태 코드: {response.status_code}")
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # 2. 표(Table)가 있는지 확인
+            tables = soup.select('table')
+            print(f"📊 발견된 표(Table) 개수: {len(tables)}개")
+            
+            # 3. 행(tr)이 있는지 확인
+            rows = soup.select('tr')
+            print(f"📑 발견된 행(tr) 개수: {len(rows)}개")
+            
+            # 4. 링크(a)가 있는지 확인
+            links = soup.select('a')
+            print(f"🔗 발견된 링크(a) 개수: {len(links)}개")
+            
+            # 5. 혹시 내용이 아예 없는지 확인 (보안 차단 시 글자 수가 적음)
+            print(f"📄 전체 글자 수: {len(response.text)}자")
+            
+            if len(rows) > 0:
+                print("\n[첫 번째 줄 내용 미리보기]:")
+                print(rows[0].prettify()[:500]) # 앞부분만 살짝 출력
+            else:
+                print("\n❌ 경고: 게시글 줄(tr)을 하나도 못 찾았습니다!")
+                print("웹사이트가 표(Table) 구조가 아니거나, 자바스크립트로 로딩되는 방식일 수 있습니다.")
 
-        new_posts_found = False
-
-        for row in rows:
-            link_tag = row.find('a')
-            if not link_tag:
-                continue
-
-            title = link_tag.get_text(strip=True)
-            href = link_tag['href']
-            link = BASE_URL + href if href.startswith('/') else href
-
-            # 안 본 글이면 무조건 분석
-            if title not in sent_posts:
-                # ✅ 여기가 문제였던 부분입니다. 줄바꿈 없이 한 줄에 써야 합니다.
-                print(f"🔍 새 글 분석: {title}")
-                
-                top_schools = analyze_schools(link)
-                
-                msg = f"🔔 [새 공고]\n제목: {title}\n링크: {link}\n\n"
-                
-                if top_schools:
-                    msg += "📏 **직선거리 가까운 순 TOP 5**\n"
-                    for i, s in enumerate(top_schools[:5], 1):
-                        msg += f"{i}. {s['name']} ({s['region']}) | {s['km']}km\n"
-                else:
-                    msg += "(학교 목록을 찾지 못했습니다)"
-
-                asyncio.run(send_message(msg))
-                sent_posts.append(title)
-                new_posts_found = True
-
-        if new_posts_found:
-            with open(FILE_PATH, "w", encoding="utf-8") as f:
-                f.write("\n".join(sent_posts[-50:]))
-            print("업데이트 완료")
         else:
-            msg = "현재 새로운 공고가 없습니다. (봇 생존 🟢)"
-            asyncio.run(send_message(msg))
-            print("새로운 공고 없음")
+            print("❌ 접속 실패! 학교 서버가 봇을 차단했을 수 있습니다.")
 
     except Exception as e:
         print(f"에러 발생: {e}")
 
+    print("----- [진단 종료] -----")
+
 if __name__ == "__main__":
-    main()
+    debug_site()
