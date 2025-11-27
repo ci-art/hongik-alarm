@@ -2,13 +2,13 @@ import os
 import telegram
 import asyncio
 import time
+import random
 from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+
+# ✅ 탐지 회피용 드라이버
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -22,80 +22,64 @@ HONGIK_PW = os.environ.get('HONGIK_PW')
 
 MY_HOME_COORDS = (37.5088, 127.0817)
 
+# 로그인 주소
 LOGIN_URL = "https://my.hongik.ac.kr/my/login.do?Refer=https://inno.hongik.ac.kr/index.aspx"
 TARGET_URL = "https://inno.hongik.ac.kr/EmpInfo/Part/B/partb0020s.aspx?mc=0638"
 BASE_URL = "https://inno.hongik.ac.kr"
 FILE_PATH = "sent_posts.txt"
 
 def get_browser():
-    chrome_options = Options()
+    options = uc.ChromeOptions()
+    options.add_argument("--headless=new") # 최신 헤드리스
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
     
-    # ✅ [화면 로딩 문제 해결을 위한 필수 옵션들]
-    chrome_options.add_argument("--headless=new") # 최신 헤드리스 모드
-    chrome_options.add_argument("--window-size=1920,1080") # 화면 크기 강제 고정
-    chrome_options.add_argument("--disable-gpu") # GPU 없어도 화면 그리게 함 (중요)
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--ignore-certificate-errors") # 보안 인증서 오류 무시
-    chrome_options.add_argument("--allow-running-insecure-content")
-    chrome_options.add_argument("--disable-extensions")
-    
-    # 봇 탐지 회피
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-    
-    # 완벽한 사람 User-Agent (크롬 120 버전)
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    
-    # 봇임을 숨기는 자바스크립트 명령 실행
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
+    # 드라이버 생성 (version_main을 지정하면 더 안정적이나, 자동 감지에 맡김)
+    driver = uc.Chrome(options=options, headless=True, use_subprocess=False)
     return driver
 
-# 팝업 닫기
 def close_popup(driver):
     print("🧹 팝업창 탐색...")
     time.sleep(2)
     try:
-        WebDriverWait(driver, 3).until(EC.alert_is_present())
-        driver.switch_to.alert.accept()
-    except:
-        pass
-
-    try:
-        # Close, 닫기 버튼 찾기
-        targets = driver.find_elements(By.XPATH, "//*[contains(text(), 'Close')] | //*[contains(text(), '닫기')]")
+        # Close, 닫기, x 버튼 찾기
+        targets = driver.find_elements(By.XPATH, "//*[contains(text(), 'Close')] | //*[contains(text(), '닫기')] | //button[contains(@class, 'close')]")
         for btn in targets:
             if btn.is_displayed():
                 driver.execute_script("arguments[0].click();", btn)
+                print("🚀 닫기 버튼 클릭함!")
                 time.sleep(1)
                 return
     except:
         pass
 
 def login_hongik(driver):
-    print(f"🔑 로그인 페이지 접속 시도: {LOGIN_URL}")
-    driver.get(LOGIN_URL)
+    print(f"🔑 로그인 페이지 접속: {LOGIN_URL}")
     
-    # 로딩 대기 (10초)
+    # 접속 후 충분히 대기
+    driver.get(LOGIN_URL)
     time.sleep(10)
     
-    # 📸 [진단] 접속하자마자 화면 찍기 (파란 화면이 떠야 함!)
-    driver.save_screenshot("1_login_page_check.png")
-    print(f"📍 페이지 제목 확인: {driver.title}")
+    # 📸 [진단 1] 접속 직후 화면 (여기서 하얀색이면 진짜 막힌 것)
+    driver.save_screenshot("1_login_attempt.png")
+    
+    # 만약 화면이 하얗다면 HTML 소스라도 찍어본다
+    if "<body></body>" in driver.page_source.replace(" ", ""):
+        print("❌ 치명적 오류: 화면이 텅 비었습니다 (White Screen).")
+        print("HTML Source 일부:", driver.page_source[:500])
+        return
 
     try:
-        print("⌨️ 입력창 탐색 중...")
+        print("⌨️ 아이디/비번 입력 시도...")
         
-        # 입력창이 로딩될 때까지 기다림 (최대 20초)
+        # 입력창 찾기
         id_input = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID']"))
         )
         id_input.clear()
         id_input.send_keys(HONGIK_ID)
+        time.sleep(1) # 사람처럼 잠깐 쉬기
         
         pw_input = driver.find_element(By.CSS_SELECTOR, "input[name='PASSWD']")
         pw_input.clear()
@@ -103,30 +87,26 @@ def login_hongik(driver):
         
         driver.save_screenshot("2_input_filled.png")
         
-        # 버튼 클릭
         print("🖱️ 통합로그인 버튼 클릭...")
         login_btn = driver.find_element(By.XPATH, "//button[contains(text(), '통합로그인')] | //a[contains(text(), '통합로그인')]")
         driver.execute_script("arguments[0].click();", login_btn)
         
         print("🚀 로그인 요청! 대기 중...")
-        time.sleep(10)
+        time.sleep(15) # 충분히 대기
         
         driver.save_screenshot("3_popup_check.png")
         close_popup(driver)
         
         driver.save_screenshot("4_login_complete.png")
-        print("✅ 로그인 과정 종료")
+        print("✅ 로그인 단계 종료")
         
     except Exception as e:
         print(f"⚠️ 로그인 실패: {e}")
-        # 실패 시 HTML 소스 일부 출력 (디버깅용)
-        print("--- HTML 소스코드 앞부분 ---")
-        print(driver.page_source[:500])
         driver.save_screenshot("error_login.png")
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_v11")
+        geolocator = Nominatim(user_agent="hongik_final_uc_v1")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -144,7 +124,7 @@ def calculate_distance(coords1, coords2):
 def analyze_schools(driver, link):
     try:
         driver.get(link)
-        time.sleep(2)
+        time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         tables = soup.select('table')
         results = []
@@ -175,6 +155,7 @@ def main():
     else:
         sent_posts = []
 
+    print("🚀 탐지 회피 브라우저 시작...")
     driver = get_browser()
     
     try:
@@ -183,6 +164,7 @@ def main():
         print(f"🌐 게시판 이동: {TARGET_URL}")
         driver.get(TARGET_URL)
         time.sleep(5)
+        
         driver.save_screenshot("5_board_list.png")
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -228,7 +210,7 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (화면 렌더링 옵션 강화 🟢)"
+            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (탐지 회피 모드 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
