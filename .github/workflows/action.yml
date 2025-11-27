@@ -25,7 +25,6 @@ jobs:
 
       - name: 라이브러리 설치
         run: |
-          # requests는 네이버 API 호출용으로 필요
           pip install requests beautifulsoup4 python-telegram-bot geopy selenium webdriver-manager undetected-chromedriver pyvirtualdisplay
 
       - name: 크롤링 코드 실행
@@ -34,11 +33,9 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           HONGIK_ID: ${{ secrets.HONGIK_ID }}
           HONGIK_PW: ${{ secrets.HONGIK_PW }}
-          # ✅ [여기!] 네이버 키를 다시 챙겨가도록 추가했습니다.
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: |
-          # 가상 모니터 위에서 실행
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python main.py
 
       - name: 스크린샷 결과 업로드
@@ -54,9 +51,13 @@ jobs:
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
           
-          # 파일 동기화 후 저장
-          git pull origin main --rebase
-          touch sent_posts.txt
+          # ✅ [수정된 순서]
+          # 1. 봇이 작업한 내용을 먼저 '임시 저장(Commit)' 합니다.
           git add sent_posts.txt
           git commit -m "Update sent posts" || exit 0
+          
+          # 2. 그 상태에서 최신 파일을 받아와서 합칩니다(Rebase).
+          git pull origin main --rebase
+          
+          # 3. 합쳐진 결과를 최종 업로드(Push) 합니다.
           git push
