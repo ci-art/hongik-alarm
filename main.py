@@ -22,36 +22,37 @@ HONGIK_PW = os.environ.get('HONGIK_PW')
 
 MY_HOME_COORDS = (37.5088, 127.0817)
 
-# 사용자 제보 로그인 주소
 LOGIN_URL = "https://my.hongik.ac.kr/my/login.do?auty=LOGIN&referer=%2Fmy%2Findex.do%3Fauty%3D2"
 TARGET_URL = "https://inno.hongik.ac.kr/EmpInfo/Part/B/partb0020s.aspx?mc=0638"
 BASE_URL = "https://inno.hongik.ac.kr"
 FILE_PATH = "sent_posts.txt"
 
 def get_browser():
-    # 🖥️ 가상 모니터 시작 (해상도 1920x1080)
+    # 🖥️ 가상 모니터 시작
     display = Display(visible=0, size=(1920, 1080))
     display.start()
 
     options = uc.ChromeOptions()
-    # ❌ --headless 옵션 제거! (이제 화면 있는 척 실행함)
-    # options.add_argument("--headless=new") <-- 이거 뺌
-    
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    
-    # 봇이 아닌 척 User-Agent 설정
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    # 드라이버 생성 (headless=False로 설정하여 실제 브라우저처럼 띄움)
     driver = uc.Chrome(options=options, headless=False, use_subprocess=False)
     return driver
 
 def close_popup(driver):
-    print("🧹 팝업창 탐색...")
-    time.sleep(2)
+    print("🧹 팝업창(Close) 탐색...")
+    time.sleep(3)
     try:
+        # Alert 창 닫기
+        try:
+            driver.switch_to.alert.accept()
+            print("✅ Alert 닫음")
+        except:
+            pass
+
+        # 화면 내 버튼 찾기
         targets = driver.find_elements(By.XPATH, "//*[contains(text(), 'Close')] | //*[contains(text(), '닫기')] | //button[contains(@class, 'close')]")
         for btn in targets:
             if btn.is_displayed():
@@ -66,8 +67,8 @@ def login_hongik(driver):
     print(f"🔑 로그인 페이지 접속: {LOGIN_URL}")
     driver.get(LOGIN_URL)
     
-    # 로딩 충분히 대기
-    time.sleep(10)
+    # 페이지 로딩 대기
+    time.sleep(8)
     driver.save_screenshot("1_login_attempt.png")
     
     try:
@@ -76,21 +77,33 @@ def login_hongik(driver):
         id_input = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID']"))
         )
+        id_input.click() # 입력칸 클릭 한번 해줌 (활성화)
         id_input.clear()
         id_input.send_keys(HONGIK_ID)
         time.sleep(0.5)
         
         pw_input = driver.find_element(By.CSS_SELECTOR, "input[name='PASSWD']")
+        pw_input.click()
         pw_input.clear()
         pw_input.send_keys(HONGIK_PW)
+        time.sleep(0.5)
         
         driver.save_screenshot("2_input_filled.png")
         
-        print("🖱️ 통합로그인 버튼 클릭...")
-        login_btn = driver.find_element(By.XPATH, "//button[contains(text(), '통합로그인')] | //a[contains(text(), '통합로그인')]")
-        driver.execute_script("arguments[0].click();", login_btn)
+        # ✅ [핵심 수정] 마우스 클릭 대신 '엔터키' 사용 (훨씬 안정적)
+        print("🚀 비밀번호 입력칸에서 엔터(ENTER) 입력!")
+        pw_input.send_keys(Keys.RETURN)
         
-        print("🚀 로그인 요청! 대기 중...")
+        # 혹시 엔터가 안 먹힐까봐 2초 뒤에 버튼 클릭도 시도 (보험)
+        try:
+            time.sleep(2)
+            login_btn = driver.find_element(By.XPATH, "//button[contains(text(), '통합로그인')]")
+            driver.execute_script("arguments[0].click();", login_btn)
+            print("🖱️ (보험용) 통합로그인 버튼도 눌렀습니다.")
+        except:
+            pass
+
+        print("⏳ 로그인 처리 대기 중 (15초)...")
         time.sleep(15)
         
         driver.save_screenshot("3_popup_check.png")
@@ -105,7 +118,7 @@ def login_hongik(driver):
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_xvfb")
+        geolocator = Nominatim(user_agent="hongik_final_xvfb_v2")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -166,7 +179,7 @@ def main():
         
         print(f"🌐 게시판 이동: {TARGET_URL}")
         driver.get(TARGET_URL)
-        time.sleep(5)
+        time.sleep(8) # 게시판 로딩 대기시간 늘림
         driver.save_screenshot("5_board_list.png")
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -212,7 +225,7 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (가상모니터 모드 🟢)"
+            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (엔터키 로그인 버전 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
