@@ -5,15 +5,17 @@ import time
 from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+
+# ✅ 탐지 회피용 (파란 화면 성공했던 그 드라이버)
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from pyvirtualdisplay import Display
+
+# ✅ [추가됨] 마우스 물리 제어 도구
+from selenium.webdriver.common.action_chains import ActionChains
 
 # --- [1. 설정] ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -23,28 +25,27 @@ HONGIK_PW = os.environ.get('HONGIK_PW')
 
 MY_HOME_COORDS = (37.5088, 127.0817)
 
-# 사용자 제보 로그인 주소 (정확함)
 LOGIN_URL = "https://my.hongik.ac.kr/my/login.do?auty=LOGIN&referer=%2Fmy%2Findex.do%3Fauty%3D2"
 TARGET_URL = "https://inno.hongik.ac.kr/EmpInfo/Part/B/partb0020s.aspx?mc=0638"
 BASE_URL = "https://inno.hongik.ac.kr"
 FILE_PATH = "sent_posts.txt"
 
 def get_browser():
-    # 🖥️ 가상 모니터 (화면 잘 나오는 설정 유지)
+    # 🖥️ 가상 모니터 켜기
     display = Display(visible=0, size=(1920, 1080))
     display.start()
 
-    options = Options()
+    options = uc.ChromeOptions()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    # 봇이 아닌 척 연기
+    driver = uc.Chrome(options=options, headless=False, use_subprocess=False)
     return driver
 
 def close_popup(driver):
-    print("🧹 팝업창(Close) 탐색...")
+    print("🧹 팝업창 탐색...")
     time.sleep(3)
     try:
         try:
@@ -65,13 +66,11 @@ def login_hongik(driver):
     print(f"🔑 로그인 페이지 접속: {LOGIN_URL}")
     driver.get(LOGIN_URL)
     
-    # 로딩 대기
-    time.sleep(8)
+    time.sleep(10)
     driver.save_screenshot("1_login_attempt.png")
     
     try:
         print("⌨️ 아이디/비번 입력...")
-        
         id_input = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID']"))
         )
@@ -88,36 +87,27 @@ def login_hongik(driver):
         
         driver.save_screenshot("2_input_filled.png")
         
-        # ✅ [핵심 수정] 로그인 버튼 누르기 3단 콤보
-        print("🚀 로그인 시도 1: 엔터키 입력")
-        pw_input.send_keys(Keys.RETURN)
-        time.sleep(2)
+        # ✅ [핵심 수정] 마우스 커서를 노란 버튼 위로 옮겨서 물리 클릭!
+        print("🖱️ 노란색 '통합로그인' 버튼 물리 클릭 시도...")
         
-        print("🚀 로그인 시도 2: 자바스크립트 강제 클릭")
-        try:
-            # 노란색 버튼을 찾아서 강제로 클릭 명령 전송
-            login_btn = driver.find_element(By.XPATH, "//button[contains(text(), '통합로그인')]")
-            driver.execute_script("arguments[0].click();", login_btn)
-        except:
-            print("⚠️ 버튼 클릭 실패 (이미 넘어갔을 수 있음)")
-            
-        time.sleep(2)
-
-        print("🚀 로그인 시도 3: Form 강제 전송 (최후의 수단)")
-        try:
-            # 아이디 입력칸이 들어있는 <form> 태그를 찾아서 제출(submit) 해버림
-            id_input.submit()
-        except:
-            pass
-
-        print("⏳ 로그인 처리 대기 중 (15초)...")
+        # 노란 버튼 찾기
+        login_btn = driver.find_element(By.XPATH, "//button[contains(text(), '통합로그인')]")
+        
+        # 마우스 제어기 준비
+        actions = ActionChains(driver)
+        
+        # 1. 버튼으로 마우스 이동 -> 2. 클릭 -> 3. 실행
+        actions.move_to_element(login_btn).click().perform()
+        
+        print("🚀 물리 클릭 완료! 15초 대기...")
         time.sleep(15)
         
+        # 성공했는지 확인
+        print(f"📍 현재 URL: {driver.current_url}")
         driver.save_screenshot("3_popup_check.png")
         close_popup(driver)
         
         driver.save_screenshot("4_login_complete.png")
-        print("✅ 로그인 단계 종료")
         
     except Exception as e:
         print(f"⚠️ 로그인 실패: {e}")
@@ -125,7 +115,7 @@ def login_hongik(driver):
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_xvfb_v3")
+        geolocator = Nominatim(user_agent="hongik_final_click_v1")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -174,8 +164,13 @@ def main():
     else:
         sent_posts = []
 
-    print("🚀 가상 모니터 브라우저 시작...")
-    driver = get_browser()
+    print("🚀 탐지 회피 + 물리 클릭 봇 시작...")
+    try:
+        driver = get_browser()
+    except:
+        # 가끔 드라이버 로딩 실패시 재시도
+        time.sleep(5)
+        driver = get_browser()
     
     try:
         login_hongik(driver)
@@ -228,14 +223,17 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (로그인 3단 콤보 버전 🟢)"
+            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (물리 클릭 버전 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
         print(f"에러 발생: {e}")
         driver.save_screenshot("error_final.png")
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
