@@ -20,19 +20,16 @@ jobs:
 
       - name: 라이브러리 설치
         run: |
-          pip install requests beautifulsoup4 python-telegram-bot
+          pip install requests beautifulsoup4 python-telegram-bot geopy
 
       - name: 크롤링 코드 실행
         env:
-          # 🔐 여기에 네이버 키를 추가했습니다!
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
-          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: |
           python main.py
 
-      - name: 결과 저장 (새로운 글이 있으면 기록)
+      - name: 결과 저장
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
