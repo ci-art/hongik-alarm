@@ -6,16 +6,13 @@ from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 
-# ✅ 탐지 회피용 (파란 화면 성공했던 그 드라이버)
+# 탐지 회피용 드라이버
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from pyvirtualdisplay import Display
-
-# ✅ [추가됨] 마우스 물리 제어 도구
-from selenium.webdriver.common.action_chains import ActionChains
 
 # --- [1. 설정] ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -31,7 +28,7 @@ BASE_URL = "https://inno.hongik.ac.kr"
 FILE_PATH = "sent_posts.txt"
 
 def get_browser():
-    # 🖥️ 가상 모니터 켜기
+    # 🖥️ 가상 모니터 유지 (화면 잘 나오니까)
     display = Display(visible=0, size=(1920, 1080))
     display.start()
 
@@ -40,12 +37,11 @@ def get_browser():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     
-    # 봇이 아닌 척 연기
     driver = uc.Chrome(options=options, headless=False, use_subprocess=False)
     return driver
 
 def close_popup(driver):
-    print("🧹 팝업창 탐색...")
+    print("🧹 팝업창(Close) 탐색...")
     time.sleep(3)
     try:
         try:
@@ -87,23 +83,25 @@ def login_hongik(driver):
         
         driver.save_screenshot("2_input_filled.png")
         
-        # ✅ [핵심 수정] 마우스 커서를 노란 버튼 위로 옮겨서 물리 클릭!
-        print("🖱️ 노란색 '통합로그인' 버튼 물리 클릭 시도...")
+        # ✅ [핵심 수정] 자바스크립트로 버튼 강제 실행 (God Mode)
+        print("🚀 JS로 버튼 강제 클릭 명령 전송...")
         
-        # 노란 버튼 찾기
-        login_btn = driver.find_element(By.XPATH, "//button[contains(text(), '통합로그인')]")
-        
-        # 마우스 제어기 준비
-        actions = ActionChains(driver)
-        
-        # 1. 버튼으로 마우스 이동 -> 2. 클릭 -> 3. 실행
-        actions.move_to_element(login_btn).click().perform()
-        
-        print("🚀 물리 클릭 완료! 15초 대기...")
+        # '통합로그인' 글자가 들어간 모든 요소를 찾아서 그 중 버튼 역할을 하는 놈을 클릭
+        try:
+            # 1차 시도: 노란 버튼의 XPATH를 정확히 조준
+            login_btn = driver.find_element(By.XPATH, "//*[text()='통합로그인']")
+            driver.execute_script("arguments[0].click();", login_btn)
+        except:
+            # 2차 시도: 실패하면 폼(Form) 자체를 제출해버림
+            print("⚠️ 버튼 클릭 실패 -> Form 강제 제출 시도")
+            driver.execute_script("document.forms[0].submit()")
+
+        print("⏳ 로그인 처리 대기 중 (15초)...")
         time.sleep(15)
         
-        # 성공했는지 확인
+        # 성공 여부 확인 (URL 변경 체크)
         print(f"📍 현재 URL: {driver.current_url}")
+        
         driver.save_screenshot("3_popup_check.png")
         close_popup(driver)
         
@@ -115,7 +113,7 @@ def login_hongik(driver):
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_click_v1")
+        geolocator = Nominatim(user_agent="hongik_final_js_v1")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -164,11 +162,10 @@ def main():
     else:
         sent_posts = []
 
-    print("🚀 탐지 회피 + 물리 클릭 봇 시작...")
+    print("🚀 JS 강제 클릭 봇 시작...")
     try:
         driver = get_browser()
     except:
-        # 가끔 드라이버 로딩 실패시 재시도
         time.sleep(5)
         driver = get_browser()
     
@@ -223,7 +220,7 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (물리 클릭 버전 🟢)"
+            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (JS 클릭 버전 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
