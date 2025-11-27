@@ -2,8 +2,8 @@ import requests
 
 # --- [여기에 직접 키를 적어서 테스트해보세요] ---
 # ⚠️ 주의: 테스트 후에는 이 키를 지워야 안전합니다!
-TEMP_CLIENT_ID = "zud7p20wei"       # 예: "zud7p20wei"
-TEMP_CLIENT_SECRET = "UTP9YENhF0TdQPBwD94tdjo5kYywM99dKiWQHH8R" # 예: "UTP9..." (앞뒤 공백 조심!)
+TEMP_CLIENT_ID = "5q54bn8o4r"       # 예: "zud7p20wei"
+TEMP_CLIENT_SECRET = "bgKAVOFC2DUJk88u5M9DUGewSyYlHAeWx6ANrBQL" # 예: "UTP9..." (앞뒤 공백 조심!)
 
 def final_test():
     print("----- [직접 입력 테스트 시작] -----")
