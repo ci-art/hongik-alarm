@@ -68,6 +68,9 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
+            # 🔔 공고가 없을 때도 메시지 보내기 (주의: 20분마다 옴)
+            message = "현재 '고사장 준비' 관련 새 공고가 없습니다. (봇 생존 신고 🟢)"
+            asyncio.run(send_telegram_message(message))
             print("새로운 공고 없음")
 
     except Exception as e:
