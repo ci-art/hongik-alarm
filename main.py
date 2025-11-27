@@ -18,7 +18,7 @@ NAVER_CLIENT_SECRET = os.environ.get('NAVER_CLIENT_SECRET') # 아까 알려주�
 
 # --- [2. 사용자 설정] ---
 # 감시할 키워드 (제목에 이 단어가 있으면 분석 시작)
-KEYWORDS = ["고사장", "접수", "안내"] 
+KEYWORDS = ["고사장", "TOEIC", "아르바이트"]
 
 # 🚨 내 집 주소 (고정)
 MY_HOME_ADDRESS = "서울특별시 송파구 백제고분로 12길 8-26"
