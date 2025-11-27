@@ -22,7 +22,6 @@ HONGIK_PW = os.environ.get('HONGIK_PW')
 # 내 집 좌표 (송파구 백제고분로 12길 8-26)
 MY_HOME_COORDS = (37.5088, 127.0817)
 
-# ✅ 타겟 지역 설정 (여기에 포함된 지역만 찾음)
 TARGET_REGIONS = ["송파", "강남"]
 
 LOGIN_URL = "https://my.hongik.ac.kr/my/login.do?auty=LOGIN&referer=%2Fmy%2Findex.do%3Fauty%3D2"
@@ -93,13 +92,32 @@ def login_hongik(driver):
     except Exception as e:
         print(f"⚠️ 로그인 중 오류: {e}")
 
+# ✅ [수정] 학교 이름 보정 함수 (중 -> 중학교, 고 -> 고등학교)
+def fix_school_name(name):
+    name = name.strip()
+    if name.endswith("중") and not name.endswith("중학교"):
+        return name + "학교"
+    if name.endswith("고") and not name.endswith("고등학교"):
+        return name + "등학교"
+    if name.endswith("초") and not name.endswith("초등학교"):
+        return name + "등학교"
+    return name
+
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_target_v2")
-        query = f"서울 {region} {school_name}"
+        geolocator = Nominatim(user_agent="hongik_final_fix_v2")
+        
+        # 1차 시도: 보정된 이름으로 검색 (예: 서울 강남구 대청중학교)
+        full_name = fix_school_name(school_name)
+        query = f"서울 {region} {full_name}"
         location = geolocator.geocode(query)
-        if not location: location = geolocator.geocode(f"{region} {school_name}")
-        if location: return (location.latitude, location.longitude)
+        
+        # 2차 시도: 실패하면 그냥 이름으로 검색
+        if not location:
+             location = geolocator.geocode(f"{region} {school_name}")
+        
+        if location:
+            return (location.latitude, location.longitude)
         return None
     except:
         return None
@@ -110,9 +128,8 @@ def calculate_distance(coords1, coords2):
     except:
         return 9999
 
-# --- [상세 페이지 분석 함수 (필터링 추가)] ---
 def analyze_detail_page(driver):
-    print("--> 송파구/강남구 학교만 골라내는 중...")
+    print("--> 학교 목록 분석 및 거리 계산 중...")
     time.sleep(3)
     
     try:
@@ -128,7 +145,7 @@ def analyze_detail_page(driver):
                     region = cols[1].get_text(strip=True)
                     school_name = cols[2].get_text(strip=True)
                     
-                    # ✅ [필터링] 송파 또는 강남이 아니면 과감히 패스!
+                    # 송파/강남 필터링
                     is_target_region = False
                     for target in TARGET_REGIONS:
                         if target in region:
@@ -136,15 +153,19 @@ def analyze_detail_page(driver):
                             break
                     
                     if not is_target_region:
-                        continue # 다음 학교로 넘어감
+                        continue
 
-                    # 조건에 맞는 학교만 좌표 검색
-                    print(f"   🎯 타겟 지역 발견: {school_name} ({region})")
+                    # 거리 계산
                     school_coords = get_school_coords(school_name, region)
+                    
                     if school_coords:
                         km = calculate_distance(MY_HOME_COORDS, school_coords)
+                        print(f"   📏 계산 성공: {school_name} -> {km}km")
                         results.append({'name': school_name, 'region': region, 'km': km})
+                    else:
+                        print(f"   ❌ 위치 못 찾음: {school_name} ({region})")
         
+        # 거리순 정렬 (가까운 순)
         results.sort(key=lambda x: x['km'])
         return results
     except Exception as e:
@@ -156,14 +177,13 @@ async def send_message(text):
     await bot.send_message(chat_id=CHAT_ID, text=text)
 
 def main():
-    # 파일이 없으면 생성
     if not os.path.exists(FILE_PATH):
         with open(FILE_PATH, "w", encoding="utf-8") as f: pass
 
     with open(FILE_PATH, "r", encoding="utf-8") as f:
         sent_posts = f.read().splitlines()
 
-    print("🚀 홍익대 알바 봇 시작 (No.1 게시글 집중 공략)")
+    print("🚀 홍익대 알바 봇 (거리 순위 계산 버전)")
     try:
         driver = get_browser()
     except Exception as e:
@@ -181,67 +201,53 @@ def main():
         rows = soup.select('table tbody tr')
         if not rows: rows = soup.select('table tr')
         
-        # ✅ [수정] 무조건 첫 번째(No.1) 게시글만 가져옴
         if len(rows) > 0:
-            target_row = rows[0] # 맨 위 게시글
-            
+            target_row = rows[0]
             cols = target_row.select('td')
             if len(cols) >= 3:
-                # 제목 추출
                 title = cols[1].get_text(strip=True)
                 if not title: title = cols[2].get_text(strip=True)
 
-                print(f"🔍 No.1 게시글 확인: {title}")
+                print(f"🔍 No.1 게시글: {title}")
 
-                # 이미 본 글인지 확인
                 if title not in sent_posts:
-                    print("🆕 새로운 최신 글입니다! 분석 시작.")
+                    print("🆕 새 글 분석 시작!")
                     
-                    # 버튼 찾기
                     detail_buttons = driver.find_elements(By.XPATH, "//a[contains(text(), '상세보기')] | //button[contains(text(), '상세보기')] | //input[@value='상세보기']")
                     
                     if len(detail_buttons) > 0:
-                        # 첫 번째 버튼 클릭
                         first_btn = detail_buttons[0]
                         driver.execute_script("arguments[0].click();", first_btn)
                         time.sleep(3)
                         
-                        # 📸 상세 화면 확인용
-                        driver.save_screenshot("detail_view_no1.png")
-                        
-                        # 학교 분석 (송파/강남 필터링)
+                        # 분석 실행
                         top_schools = analyze_detail_page(driver)
                         
                         msg = f"🔔 [최신 알바 공고]\n제목: {title}\n\n"
                         if top_schools:
-                            msg += "🏃 **송파/강남 추천 학교**\n"
+                            msg += "🏃 **우리 집(송파)에서 가까운 순위**\n"
+                            # 거리순으로 정렬된 리스트 출력
                             for idx, s in enumerate(top_schools, 1):
                                 msg += f"{idx}. {s['name']} ({s['region']}) | {s['km']}km\n"
                         else:
-                            msg += "(송파구/강남구 학교가 없거나 위치를 못 찾았습니다.)"
+                            msg += "(송파/강남 지역 학교가 없거나 위치를 못 찾았습니다.)"
 
                         asyncio.run(send_message(msg))
-                        
-                        # 보낸 목록에 추가
                         sent_posts.append(title)
                         
-                        # 파일 저장
                         with open(FILE_PATH, "w", encoding="utf-8") as f:
                             f.write("\n".join(sent_posts[-50:]))
-                        print("✅ 업데이트 완료")
+                        print("✅ 전송 완료")
                         
                     else:
-                        print("⚠️ 상세보기 버튼을 못 찾았습니다.")
+                        print("⚠️ 상세보기 버튼 없음")
                 else:
-                    print("💤 이미 확인한 글입니다. (패스)")
-            else:
-                print("⚠️ 게시글 구조가 이상합니다.")
+                    print("💤 이미 본 글입니다.")
         else:
-            print("⚠️ 게시글이 하나도 없습니다.")
+            print("⚠️ 게시글 없음")
 
     except Exception as e:
         print(f"에러 발생: {e}")
-        driver.save_screenshot("error_final.png")
     finally:
         try:
             driver.quit()
