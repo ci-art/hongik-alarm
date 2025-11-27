@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import telegram
-import asynciohttps://github.com/ci-art/hongik-alarm/tree/main
+import asyncio
 import urllib3
 
 # SSL 경고 무시
