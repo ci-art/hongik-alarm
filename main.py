@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 
-# ✅ 탐지 회피용 드라이버
+# 탐지 회피용 드라이버
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -22,20 +22,20 @@ HONGIK_PW = os.environ.get('HONGIK_PW')
 
 MY_HOME_COORDS = (37.5088, 127.0817)
 
-# 로그인 주소
-LOGIN_URL = "https://my.hongik.ac.kr/my/login.do?Refer=https://inno.hongik.ac.kr/index.aspx"
+# ✅ [수정] 사용자님이 찾으신 '진짜' 로그인 주소
+LOGIN_URL = "https://my.hongik.ac.kr/my/login.do?auty=LOGIN&referer=%2Fmy%2Findex.do%3Fauty%3D2"
+
 TARGET_URL = "https://inno.hongik.ac.kr/EmpInfo/Part/B/partb0020s.aspx?mc=0638"
 BASE_URL = "https://inno.hongik.ac.kr"
 FILE_PATH = "sent_posts.txt"
 
 def get_browser():
     options = uc.ChromeOptions()
-    options.add_argument("--headless=new") # 최신 헤드리스
+    options.add_argument("--headless=new") 
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     
-    # 드라이버 생성 (version_main을 지정하면 더 안정적이나, 자동 감지에 맡김)
     driver = uc.Chrome(options=options, headless=True, use_subprocess=False)
     return driver
 
@@ -43,7 +43,6 @@ def close_popup(driver):
     print("🧹 팝업창 탐색...")
     time.sleep(2)
     try:
-        # Close, 닫기, x 버튼 찾기
         targets = driver.find_elements(By.XPATH, "//*[contains(text(), 'Close')] | //*[contains(text(), '닫기')] | //button[contains(@class, 'close')]")
         for btn in targets:
             if btn.is_displayed():
@@ -56,30 +55,27 @@ def close_popup(driver):
 
 def login_hongik(driver):
     print(f"🔑 로그인 페이지 접속: {LOGIN_URL}")
-    
-    # 접속 후 충분히 대기
     driver.get(LOGIN_URL)
-    time.sleep(10)
     
-    # 📸 [진단 1] 접속 직후 화면 (여기서 하얀색이면 진짜 막힌 것)
+    # 페이지 로딩 대기 (10초)
+    time.sleep(10)
     driver.save_screenshot("1_login_attempt.png")
     
-    # 만약 화면이 하얗다면 HTML 소스라도 찍어본다
+    # 접속 성공 여부 확인
     if "<body></body>" in driver.page_source.replace(" ", ""):
-        print("❌ 치명적 오류: 화면이 텅 비었습니다 (White Screen).")
-        print("HTML Source 일부:", driver.page_source[:500])
+        print("❌ 화면이 하얗습니다. (차단됨)")
         return
 
     try:
         print("⌨️ 아이디/비번 입력 시도...")
         
-        # 입력창 찾기
+        # 아이디 입력창 찾기
         id_input = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID']"))
         )
         id_input.clear()
         id_input.send_keys(HONGIK_ID)
-        time.sleep(1) # 사람처럼 잠깐 쉬기
+        time.sleep(1)
         
         pw_input = driver.find_element(By.CSS_SELECTOR, "input[name='PASSWD']")
         pw_input.clear()
@@ -92,7 +88,7 @@ def login_hongik(driver):
         driver.execute_script("arguments[0].click();", login_btn)
         
         print("🚀 로그인 요청! 대기 중...")
-        time.sleep(15) # 충분히 대기
+        time.sleep(15)
         
         driver.save_screenshot("3_popup_check.png")
         close_popup(driver)
@@ -106,7 +102,7 @@ def login_hongik(driver):
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_uc_v1")
+        geolocator = Nominatim(user_agent="hongik_final_uc_v2")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -155,7 +151,7 @@ def main():
     else:
         sent_posts = []
 
-    print("🚀 탐지 회피 브라우저 시작...")
+    print("🚀 브라우저 시작...")
     driver = get_browser()
     
     try:
@@ -210,7 +206,7 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (탐지 회피 모드 🟢)"
+            msg = f"게시글 {len(rows)}개 발견됨. (새 로그인 주소 적용 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
