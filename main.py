@@ -2,7 +2,6 @@ import os
 import telegram
 import asyncio
 import time
-import random
 from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
@@ -13,6 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from pyvirtualdisplay import Display
 
 # --- [1. 설정] ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -22,21 +22,30 @@ HONGIK_PW = os.environ.get('HONGIK_PW')
 
 MY_HOME_COORDS = (37.5088, 127.0817)
 
-# ✅ [수정] 사용자님이 찾으신 '진짜' 로그인 주소
+# 사용자 제보 로그인 주소
 LOGIN_URL = "https://my.hongik.ac.kr/my/login.do?auty=LOGIN&referer=%2Fmy%2Findex.do%3Fauty%3D2"
-
 TARGET_URL = "https://inno.hongik.ac.kr/EmpInfo/Part/B/partb0020s.aspx?mc=0638"
 BASE_URL = "https://inno.hongik.ac.kr"
 FILE_PATH = "sent_posts.txt"
 
 def get_browser():
+    # 🖥️ 가상 모니터 시작 (해상도 1920x1080)
+    display = Display(visible=0, size=(1920, 1080))
+    display.start()
+
     options = uc.ChromeOptions()
-    options.add_argument("--headless=new") 
+    # ❌ --headless 옵션 제거! (이제 화면 있는 척 실행함)
+    # options.add_argument("--headless=new") <-- 이거 뺌
+    
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     
-    driver = uc.Chrome(options=options, headless=True, use_subprocess=False)
+    # 봇이 아닌 척 User-Agent 설정
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # 드라이버 생성 (headless=False로 설정하여 실제 브라우저처럼 띄움)
+    driver = uc.Chrome(options=options, headless=False, use_subprocess=False)
     return driver
 
 def close_popup(driver):
@@ -57,25 +66,19 @@ def login_hongik(driver):
     print(f"🔑 로그인 페이지 접속: {LOGIN_URL}")
     driver.get(LOGIN_URL)
     
-    # 페이지 로딩 대기 (10초)
+    # 로딩 충분히 대기
     time.sleep(10)
     driver.save_screenshot("1_login_attempt.png")
     
-    # 접속 성공 여부 확인
-    if "<body></body>" in driver.page_source.replace(" ", ""):
-        print("❌ 화면이 하얗습니다. (차단됨)")
-        return
-
     try:
         print("⌨️ 아이디/비번 입력 시도...")
         
-        # 아이디 입력창 찾기
         id_input = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID']"))
         )
         id_input.clear()
         id_input.send_keys(HONGIK_ID)
-        time.sleep(1)
+        time.sleep(0.5)
         
         pw_input = driver.find_element(By.CSS_SELECTOR, "input[name='PASSWD']")
         pw_input.clear()
@@ -102,7 +105,7 @@ def login_hongik(driver):
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_uc_v2")
+        geolocator = Nominatim(user_agent="hongik_final_xvfb")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -151,16 +154,19 @@ def main():
     else:
         sent_posts = []
 
-    print("🚀 브라우저 시작...")
-    driver = get_browser()
-    
+    print("🚀 가상 모니터 브라우저 시작...")
+    try:
+        driver = get_browser()
+    except Exception as e:
+        print(f"브라우저 실행 실패: {e}")
+        return
+
     try:
         login_hongik(driver)
         
         print(f"🌐 게시판 이동: {TARGET_URL}")
         driver.get(TARGET_URL)
         time.sleep(5)
-        
         driver.save_screenshot("5_board_list.png")
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -206,14 +212,17 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견됨. (새 로그인 주소 적용 🟢)"
+            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (가상모니터 모드 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
         print(f"에러 발생: {e}")
         driver.save_screenshot("error_final.png")
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
