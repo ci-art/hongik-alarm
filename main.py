@@ -13,7 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoAlertPresentException
+from selenium.common.exceptions import NoAlertPresentException, TimeoutException
 
 # --- [1. 설정] ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -21,7 +21,7 @@ CHAT_ID = os.environ.get('CHAT_ID')
 HONGIK_ID = os.environ.get('HONGIK_ID')
 HONGIK_PW = os.environ.get('HONGIK_PW')
 
-MY_HOME_COORDS = (37.5088, 127.0817) # 집 좌표
+MY_HOME_COORDS = (37.5088, 127.0817)
 TARGET_URL = "https://inno.hongik.ac.kr/EmpInfo/Part/B/partb0020s.aspx?mc=0638"
 BASE_URL = "https://inno.hongik.ac.kr"
 FILE_PATH = "sent_posts.txt"
@@ -31,71 +31,87 @@ def get_browser():
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080") # 스크린샷 잘 찍히게 화면 키움
+    chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     return driver
 
-# 팝업창(Alert) 처리 함수
 def handle_alert(driver):
     try:
+        WebDriverWait(driver, 3).until(EC.alert_is_present())
         alert = driver.switch_to.alert
         print(f"⚠️ 팝업창 발견: {alert.text}")
-        alert.accept() # 확인 버튼 클릭
+        alert.accept()
         print("✅ 팝업창 닫음")
         time.sleep(1)
-    except NoAlertPresentException:
-        pass # 팝업 없으면 통과
+    except TimeoutException:
+        pass
 
 def login_hongik(driver):
     print("🔑 로그인 프로세스 시작...")
     
-    # 1. 접속
     driver.get(TARGET_URL)
-    time.sleep(2)
-    handle_alert(driver) # 혹시 '로그인하세요' 팝업이 뜨면 닫음
-    driver.save_screenshot("1_access_page.png") # 📸 찰칵
+    time.sleep(3)
+    handle_alert(driver)
     
-    # 로그인 페이지가 아니라면 로그인 버튼을 찾아봄 (상황에 따라 다름)
-    # 일단 입력창이 있는지 바로 확인
+    # 📸 [1] 처음 화면 찍기
+    driver.save_screenshot("1_start_page.png")
+
     try:
-        # 아이디 입력창 찾기 (여러가지 이름으로 시도)
-        # 홍익대 inno 사이트는 보통 name='USER_ID'를 씀
+        # ✅ [수정된 부분] 먼저 '로그인' 버튼을 찾아서 클릭해야 함!
+        # 화면에 보이는 '로그인' 글자가 들어간 버튼/링크를 찾음
+        print("🖱️ '로그인' 버튼 찾는 중...")
         try:
-            id_input = driver.find_element(By.NAME, "USER_ID")
+            # 통합 로그인 버튼 (보통 a 태그나 button 태그)
+            login_btn = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), '로그인')] | //button[contains(text(), '로그인')]"))
+            )
+            login_btn.click()
+            print("🖱️ 버튼 클릭 성공! 로그인 페이지로 이동 중...")
+            time.sleep(3)
         except:
-            # 없으면 일반적인 text input 찾기
-            id_input = driver.find_element(By.CSS_SELECTOR, "input[type='text']")
-            
-        id_input.clear()
-        id_input.send_keys(HONGIK_ID)
+            print("⚠️ 로그인 버튼을 못 찾았습니다. 이미 로그인 페이지거나, 로그인이 되어있을 수 있습니다.")
+
+        # 📸 [2] 버튼 누른 후 화면 찍기
+        driver.save_screenshot("2_login_form.png")
+
+        # 이제 아이디/비번 입력 (홍익대 통합로그인 페이지 구조 예상)
+        print("⌨️ 아이디/비번 입력 시도...")
         
+        # 아이디 입력칸 찾기 (name="USER_ID" 또는 id="USER_ID")
         try:
-            pw_input = driver.find_element(By.NAME, "PASSWD")
+            id_input = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID'], input[id='USER_ID'], input[type='text']"))
+            )
+            id_input.clear()
+            id_input.send_keys(HONGIK_ID)
         except:
+            print("❌ 아이디 입력칸을 못 찾음")
+
+        # 비번 입력칸 찾기
+        try:
             pw_input = driver.find_element(By.CSS_SELECTOR, "input[type='password']")
-            
-        pw_input.clear()
-        pw_input.send_keys(HONGIK_PW)
+            pw_input.clear()
+            pw_input.send_keys(HONGIK_PW)
+            pw_input.send_keys(Keys.RETURN) # 엔터
+        except:
+            print("❌ 비번 입력칸을 못 찾음")
         
-        driver.save_screenshot("2_filled_login.png") # 📸 입력 후 찰칵
-        
-        # 엔터키로 로그인
-        pw_input.send_keys(Keys.RETURN)
-        print("⏳ 엔터 입력함. 로딩 대기...")
+        print("⏳ 로그인 정보 전송 완료. 대기 중...")
         time.sleep(5)
+        handle_alert(driver)
         
-        handle_alert(driver) # 로그인 후 '비번 변경하세요' 팝업 대응
-        driver.save_screenshot("3_after_login.png") # 📸 로그인 직후 찰칵
+        # 📸 [3] 로그인 완료 후 화면
+        driver.save_screenshot("3_after_login.png")
         
     except Exception as e:
-        print(f"⚠️ 로그인 입력 실패: {e}")
-        driver.save_screenshot("error_login_failed.png")
+        print(f"⚠️ 로그인 과정 중 에러: {e}")
+        driver.save_screenshot("error_login.png")
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_debug")
+        geolocator = Nominatim(user_agent="hongik_final_debug_v4")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location:
@@ -150,16 +166,16 @@ def main():
     driver = get_browser()
     
     try:
-        # 로그인 시도
+        # 로그인 수행
         login_hongik(driver)
         
-        # 게시판 다시 접속
+        # 로그인 후 게시판으로 다시 이동
         print(f"🌐 게시판으로 이동: {TARGET_URL}")
         driver.get(TARGET_URL)
         time.sleep(3)
         handle_alert(driver)
         
-        # 📸 게시판 화면 찰칵! (이게 제일 중요)
+        # 📸 [4] 최종 게시판 화면
         driver.save_screenshot("4_board_list.png")
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -168,10 +184,6 @@ def main():
         
         print(f"📊 발견된 게시글 수: {len(rows)}개")
         
-        # 디버깅용 메시지
-        if len(rows) == 0:
-            print("❌ 게시글이 0개입니다. 스크린샷(4_board_list.png)을 확인하세요!")
-
         new_posts_found = False
         post_links = []
 
@@ -210,12 +222,12 @@ def main():
                 f.write("\n".join(sent_posts[-50:]))
             print("업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견됨. 새 글 없음. (CCTV 작동중 📸)"
+            msg = f"게시글 {len(rows)}개 발견. 새 공고 없음. (버튼 클릭 성공 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
         print(f"에러 발생: {e}")
-        driver.save_screenshot("error_final.png") # 에러 났을 때 화면 찍기
+        driver.save_screenshot("error_final.png")
     finally:
         driver.quit()
 
