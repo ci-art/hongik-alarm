@@ -19,7 +19,11 @@ CHAT_ID = os.environ.get('CHAT_ID')
 HONGIK_ID = os.environ.get('HONGIK_ID')
 HONGIK_PW = os.environ.get('HONGIK_PW')
 
+# 내 집 좌표 (송파구 백제고분로 12길 8-26)
 MY_HOME_COORDS = (37.5088, 127.0817)
+
+# ✅ 타겟 지역 설정 (여기에 포함된 지역만 찾음)
+TARGET_REGIONS = ["송파", "강남"]
 
 LOGIN_URL = "https://my.hongik.ac.kr/my/login.do?auty=LOGIN&referer=%2Fmy%2Findex.do%3Fauty%3D2"
 TARGET_URL = "https://inno.hongik.ac.kr/EmpInfo/Part/B/partb0020s.aspx?mc=0638"
@@ -91,7 +95,7 @@ def login_hongik(driver):
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_screenshot_v1")
+        geolocator = Nominatim(user_agent="hongik_target_v1")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -106,18 +110,16 @@ def calculate_distance(coords1, coords2):
     except:
         return 9999
 
-# --- [상세 페이지 분석 함수] ---
+# --- [상세 페이지 분석 함수 (필터링 추가)] ---
 def analyze_detail_page(driver):
-    print("--> 상세 페이지 분석 중...")
-    time.sleep(2)
+    print("--> 송파구/강남구 학교만 골라내는 중...")
+    time.sleep(3)
     
     try:
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         tables = soup.select('table')
         results = []
         
-        print(f"   -> 발견된 표 개수: {len(tables)}")
-
         for table in tables:
             rows = table.select('tr')
             for row in rows:
@@ -126,9 +128,18 @@ def analyze_detail_page(driver):
                     region = cols[1].get_text(strip=True)
                     school_name = cols[2].get_text(strip=True)
                     
-                    if len(school_name) < 2 or "학교" in school_name:
-                         if "학교명" in school_name: continue
+                    # ✅ [필터링] 송파 또는 강남이 아니면 과감히 패스!
+                    is_target_region = False
+                    for target in TARGET_REGIONS:
+                        if target in region:
+                            is_target_region = True
+                            break
+                    
+                    if not is_target_region:
+                        continue # 다음 학교로 넘어감
 
+                    # 조건에 맞는 학교만 좌표 검색
+                    print(f"   🎯 타겟 지역 발견: {school_name} ({region})")
                     school_coords = get_school_coords(school_name, region)
                     if school_coords:
                         km = calculate_distance(MY_HOME_COORDS, school_coords)
@@ -151,7 +162,7 @@ def main():
     with open(FILE_PATH, "r", encoding="utf-8") as f:
         sent_posts = f.read().splitlines()
 
-    print("🚀 봇 시작 (상세화면 스크린샷 포함)")
+    print("🚀 홍익대 알바 봇 시작 (No.1 게시글 집중 공략)")
     try:
         driver = get_browser()
     except Exception as e:
@@ -165,81 +176,43 @@ def main():
         driver.get(TARGET_URL)
         time.sleep(5)
         
-        # 목록 화면도 찍어봅니다
-        driver.save_screenshot("list_view.png")
-        
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         rows = soup.select('table tbody tr')
         if not rows: rows = soup.select('table tr')
         
-        print(f"📊 목록에서 {len(rows)}개의 행 발견")
-        
-        new_posts_found = False
-        
-        detail_buttons = driver.find_elements(By.XPATH, "//a[contains(text(), '상세보기')] | //button[contains(text(), '상세보기')] | //input[@value='상세보기']")
-        
-        for i, row in enumerate(rows):
-            if i >= len(detail_buttons): break
+        # ✅ [수정] 무조건 첫 번째(No.1) 게시글만 가져옴
+        if len(rows) > 0:
+            target_row = rows[0] # 맨 위 게시글
             
-            cols = row.select('td')
-            if len(cols) < 3: continue
-            
-            title = cols[1].get_text(strip=True)
-            if not title: title = cols[2].get_text(strip=True)
+            cols = target_row.select('td')
+            if len(cols) >= 3:
+                # 제목 추출
+                title = cols[1].get_text(strip=True)
+                if not title: title = cols[2].get_text(strip=True)
 
-            if title in sent_posts:
-                continue
-            
-            print(f"🔍 새 공고 발견! : {title}")
-            
-            current_buttons = driver.find_elements(By.XPATH, "//a[contains(text(), '상세보기')] | //button[contains(text(), '상세보기')] | //input[@value='상세보기']")
-            if i < len(current_buttons):
-                btn = current_buttons[i]
-                driver.execute_script("arguments[0].click();", btn)
-                
-                # 상세 페이지 로딩 대기
-                time.sleep(5)
-                
-                # 📸 [여기가 추가됨] 상세 페이지 찰칵!
-                screenshot_name = f"detail_view_{i}.png"
-                driver.save_screenshot(screenshot_name)
-                print(f"📸 상세 화면 저장됨: {screenshot_name}")
-                
-                top_schools = analyze_detail_page(driver)
-                
-                msg = f"🔔 [새 알바 공고]\n제목: {title}\n\n"
-                if top_schools:
-                    msg += "📏 **가까운 학교 TOP 5**\n"
-                    for idx, s in enumerate(top_schools[:5], 1):
-                        msg += f"{idx}. {s['name']} ({s['region']}) | {s['km']}km\n"
-                else:
-                    msg += "(학교 위치 정보 없음 또는 분석 실패)"
+                print(f"🔍 No.1 게시글 확인: {title}")
 
-                asyncio.run(send_message(msg))
-                sent_posts.append(title)
-                new_posts_found = True
-                
-                driver.back()
-                time.sleep(3)
-            else:
-                print("⚠️ 상세보기 버튼을 찾을 수 없음")
-
-        if new_posts_found:
-            with open(FILE_PATH, "w", encoding="utf-8") as f:
-                f.write("\n".join(sent_posts[-50:]))
-            print("✅ 업데이트 완료")
-        else:
-            msg = "새로운 공고 없음 (봇 작동중 🟢)"
-            asyncio.run(send_message(msg))
-
-    except Exception as e:
-        print(f"에러 발생: {e}")
-        driver.save_screenshot("error_final.png")
-    finally:
-        try:
-            driver.quit()
-        except:
-            pass
-
-if __name__ == "__main__":
-    main()
+                # 이미 본 글인지 확인
+                if title not in sent_posts:
+                    print("🆕 새로운 최신 글입니다! 분석 시작.")
+                    
+                    # 버튼 찾기
+                    detail_buttons = driver.find_elements(By.XPATH, "//a[contains(text(), '상세보기')] | //button[contains(text(), '상세보기')] | //input[@value='상세보기']")
+                    
+                    if len(detail_buttons) > 0:
+                        # 첫 번째 버튼 클릭
+                        first_btn = detail_buttons[0]
+                        driver.execute_script("arguments[0].click();", first_btn)
+                        time.sleep(3)
+                        
+                        # 📸 상세 화면 확인용
+                        driver.save_screenshot("detail_view_no1.png")
+                        
+                        # 학교 분석 (송파/강남 필터링)
+                        top_schools = analyze_detail_page(driver)
+                        
+                        msg = f"🔔 [최신 알바 공고]\n제목: {title}\n\n"
+                        if top_schools:
+                            msg += "🏃 **송파/강남 추천 학교**\n"
+                            for idx, s in enumerate(top_schools, 1): # 개수 제한 없이 다 보여줌 (어차피 필터링 돼서 몇 개 없음)
+                                msg += f"{idx}. {s['name']} ({s['region']}) | {s['km']}km\n"
