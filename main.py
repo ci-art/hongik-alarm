@@ -111,5 +111,37 @@ def main():
             href = link_tag['href']
             link = BASE_URL + href if href.startswith('/') else href
 
+            # 안 본 글이면 무조건 분석
             if title not in sent_posts:
-                print(f"🔍 새 글
+                # ✅ 여기가 문제였던 부분입니다. 줄바꿈 없이 한 줄에 써야 합니다.
+                print(f"🔍 새 글 분석: {title}")
+                
+                top_schools = analyze_schools(link)
+                
+                msg = f"🔔 [새 공고]\n제목: {title}\n링크: {link}\n\n"
+                
+                if top_schools:
+                    msg += "📏 **직선거리 가까운 순 TOP 5**\n"
+                    for i, s in enumerate(top_schools[:5], 1):
+                        msg += f"{i}. {s['name']} ({s['region']}) | {s['km']}km\n"
+                else:
+                    msg += "(학교 목록을 찾지 못했습니다)"
+
+                asyncio.run(send_message(msg))
+                sent_posts.append(title)
+                new_posts_found = True
+
+        if new_posts_found:
+            with open(FILE_PATH, "w", encoding="utf-8") as f:
+                f.write("\n".join(sent_posts[-50:]))
+            print("업데이트 완료")
+        else:
+            msg = "현재 새로운 공고가 없습니다. (봇 생존 🟢)"
+            asyncio.run(send_message(msg))
+            print("새로운 공고 없음")
+
+    except Exception as e:
+        print(f"에러 발생: {e}")
+
+if __name__ == "__main__":
+    main()
