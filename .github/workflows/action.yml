@@ -20,12 +20,15 @@ jobs:
 
       - name: 라이브러리 설치
         run: |
-          pip install requests beautifulsoup4 python-telegram-bot geopy
+          pip install requests beautifulsoup4 python-telegram-bot geopy selenium webdriver-manager
 
       - name: 크롤링 코드 실행
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          # ✅ 여기에 아이디/비번 추가됨
+          HONGIK_ID: ${{ secrets.HONGIK_ID }}
+          HONGIK_PW: ${{ secrets.HONGIK_PW }}
         run: |
           python main.py
 
@@ -33,7 +36,6 @@ jobs:
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-          # 파일이 없으면 생성, 있으면 업데이트
           touch sent_posts.txt
           git add sent_posts.txt
           git commit -m "Update sent posts" || exit 0
