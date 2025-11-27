@@ -1,0 +1,38 @@
+name: Hongik Job Alarm
+
+on:
+  schedule:
+    - cron: '*/20 * * * *' # 20분마다 실행 (GitHub 무료제공 한계 고려)
+  workflow_dispatch: # 수동 실행 버튼 추가
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 저장소 코드 가져오기
+        uses: actions/checkout@v3
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: 라이브러리 설치
+        run: |
+          pip install requests beautifulsoup4 python-telegram-bot
+
+      - name: 크롤링 코드 실행
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          python main.py
+
+      - name: 결과 저장 (새로운 글이 있으면 기록)
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add sent_posts.txt
+          git commit -m "Update sent posts" || exit 0
+          git push
