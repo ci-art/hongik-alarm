@@ -95,7 +95,7 @@ def login_hongik(driver):
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_target_v1")
+        geolocator = Nominatim(user_agent="hongik_target_v2")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -156,6 +156,7 @@ async def send_message(text):
     await bot.send_message(chat_id=CHAT_ID, text=text)
 
 def main():
+    # 파일이 없으면 생성
     if not os.path.exists(FILE_PATH):
         with open(FILE_PATH, "w", encoding="utf-8") as f: pass
 
@@ -214,5 +215,38 @@ def main():
                         msg = f"🔔 [최신 알바 공고]\n제목: {title}\n\n"
                         if top_schools:
                             msg += "🏃 **송파/강남 추천 학교**\n"
-                            for idx, s in enumerate(top_schools, 1): # 개수 제한 없이 다 보여줌 (어차피 필터링 돼서 몇 개 없음)
+                            for idx, s in enumerate(top_schools, 1):
                                 msg += f"{idx}. {s['name']} ({s['region']}) | {s['km']}km\n"
+                        else:
+                            msg += "(송파구/강남구 학교가 없거나 위치를 못 찾았습니다.)"
+
+                        asyncio.run(send_message(msg))
+                        
+                        # 보낸 목록에 추가
+                        sent_posts.append(title)
+                        
+                        # 파일 저장
+                        with open(FILE_PATH, "w", encoding="utf-8") as f:
+                            f.write("\n".join(sent_posts[-50:]))
+                        print("✅ 업데이트 완료")
+                        
+                    else:
+                        print("⚠️ 상세보기 버튼을 못 찾았습니다.")
+                else:
+                    print("💤 이미 확인한 글입니다. (패스)")
+            else:
+                print("⚠️ 게시글 구조가 이상합니다.")
+        else:
+            print("⚠️ 게시글이 하나도 없습니다.")
+
+    except Exception as e:
+        print(f"에러 발생: {e}")
+        driver.save_screenshot("error_final.png")
+    finally:
+        try:
+            driver.quit()
+        except:
+            pass
+
+if __name__ == "__main__":
+    main()
