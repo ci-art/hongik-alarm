@@ -1,56 +1,45 @@
 import requests
-import os
 
-# 깃허브에 저장된 키 가져오기
-CLIENT_ID = os.environ.get('NAVER_CLIENT_ID')
-CLIENT_SECRET = os.environ.get('NAVER_CLIENT_SECRET')
-ADDRESS = "서울특별시 송파구 백제고분로 12길 8-26"
+# --- [여기에 직접 키를 적어서 테스트해보세요] ---
+# ⚠️ 주의: 테스트 후에는 이 키를 지워야 안전합니다!
+TEMP_CLIENT_ID = "zud7p20wei"       # 예: "zud7p20wei"
+TEMP_CLIENT_SECRET = "UTP9YENhF0TdQPBwD94tdjo5kYywM99dKiWQHH8R" # 예: "UTP9..." (앞뒤 공백 조심!)
 
-def test_naver_api():
-    print("----- [네이버 API 진단 시작] -----")
+def final_test():
+    print("----- [직접 입력 테스트 시작] -----")
     
-    # 1. 키가 제대로 들어왔는지 확인 (보안을 위해 일부만 출력)
-    if not CLIENT_ID or not CLIENT_SECRET:
-        print("❌ 실패: 깃허브 Secrets에서 키를 가져오지 못했습니다.")
-        print("   -> 해결책: Secrets 이름이 NAVER_CLIENT_ID, NAVER_CLIENT_SECRET 인지 확인하세요.")
-        return
-    else:
-        print(f"✅ 키 확인: ID는 '{CLIENT_ID[:3]}***' 로 시작합니다.")
-
-    # 2. 주소 변환 요청 (Geocoding)
+    # 1. 키에 공백이 숨어있는지 확인 (제일 흔한 실수!)
+    clean_id = TEMP_CLIENT_ID.strip()
+    clean_secret = TEMP_CLIENT_SECRET.strip()
+    
+    if len(TEMP_CLIENT_ID) != len(clean_id) or len(TEMP_CLIENT_SECRET) != len(clean_secret):
+        print("⚠️ 발견됨!! 키 앞뒤에 몰래 숨어있던 '띄어쓰기'를 발견했습니다.")
+        print("   -> 깃허브 Secrets에 등록할 때 이 공백도 같이 들어갔을 겁니다.")
+        print("   -> 코드가 자동으로 공백을 삭제하고 다시 시도합니다...")
+    
+    # 2. 네이버에 요청 보내기
     url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode"
     headers = {
-        "X-NCP-APIGW-API-KEY-ID": CLIENT_ID,
-        "X-NCP-APIGW-API-KEY": CLIENT_SECRET
+        "X-NCP-APIGW-API-KEY-ID": clean_id,
+        "X-NCP-APIGW-API-KEY": clean_secret
     }
-    params = {"query": ADDRESS}
+    # 주소: 송파구 백제고분로 12길 8-26
+    params = {"query": "서울특별시 송파구 백제고분로 12길 8-26"}
     
     try:
         response = requests.get(url, headers=headers, params=params)
-        
-        print(f"📡 응답 상태 코드: {response.status_code}")
-        print(f"📩 네이버가 보낸 메시지: {response.text}")
+        print(f"📩 결과 코드: {response.status_code}")
         
         if response.status_code == 200:
-            data = response.json()
-            if data.get('addresses'):
-                print(f"🎉 성공! 좌표 변환 완료: {data['addresses'][0]['x']}, {data['addresses'][0]['y']}")
-            else:
-                print("❌ 실패: 네이버가 주소를 못 찾겠다고 합니다.")
-                print("   -> 해결책: 주소를 '송파구 백제고분로 12길' 까지만 줄여보세요.")
-        elif response.status_code == 401:
-            print("❌ 실패: [인증 오류] 키가 틀렸거나 승인되지 않았습니다.")
-            print("   -> 해결책: 네이버 콘솔에서 ID/Secret을 재발급받아 깃허브에 다시 등록하세요.")
-        elif response.status_code == 403:
-            print("❌ 실패: [권한 오류] API 사용 권한이 없습니다.")
-            print("   -> 해결책: 네이버 콘솔 > Application > 변경 에서 'Geocoding'이 체크되어 있는지 다시 확인하세요.")
+            print("🎉 대성공!!! 네이버 API는 정상입니다.")
+            print("=> 결론: 네이버 설정은 완벽함. 깃허브 Secrets에 오타나 공백이 있었던 것임.")
+            print(f"📍 찾은 좌표: {response.json()['addresses'][0]['x']}")
         else:
-            print("❌ 실패: 알 수 없는 오류입니다.")
+            print(f"❌ 여전히 실패: {response.text}")
+            print("=> 결론: 네이버 클라우드 설정(결제카드, 체크박스 등) 문제임.")
 
     except Exception as e:
-        print(f"❌ 에러 발생: {e}")
-
-    print("----- [진단 종료] -----")
+        print(f"에러: {e}")
 
 if __name__ == "__main__":
-    test_naver_api()
+    final_test()
