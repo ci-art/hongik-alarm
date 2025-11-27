@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 
-# 탐지 회피용 드라이버
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -14,7 +13,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from pyvirtualdisplay import Display
 
-# --- [1. 설정] ---
+# --- [사용자 설정] ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 CHAT_ID = os.environ.get('CHAT_ID')
 HONGIK_ID = os.environ.get('HONGIK_ID')
@@ -28,7 +27,6 @@ BASE_URL = "https://inno.hongik.ac.kr"
 FILE_PATH = "sent_posts.txt"
 
 def get_browser():
-    # 🖥️ 가상 모니터 유지 (화면 잘 나오니까)
     display = Display(visible=0, size=(1920, 1080))
     display.start()
 
@@ -41,8 +39,7 @@ def get_browser():
     return driver
 
 def close_popup(driver):
-    print("🧹 팝업창(Close) 탐색...")
-    time.sleep(3)
+    time.sleep(2)
     try:
         try:
             driver.switch_to.alert.accept()
@@ -59,14 +56,11 @@ def close_popup(driver):
         pass
 
 def login_hongik(driver):
-    print(f"🔑 로그인 페이지 접속: {LOGIN_URL}")
+    print("🔑 로그인 시작...")
     driver.get(LOGIN_URL)
-    
-    time.sleep(10)
-    driver.save_screenshot("1_login_attempt.png")
+    time.sleep(5)
     
     try:
-        print("⌨️ 아이디/비번 입력...")
         id_input = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='USER_ID']"))
         )
@@ -81,39 +75,23 @@ def login_hongik(driver):
         pw_input.send_keys(HONGIK_PW)
         time.sleep(0.5)
         
-        driver.save_screenshot("2_input_filled.png")
-        
-        # ✅ [핵심 수정] 자바스크립트로 버튼 강제 실행 (God Mode)
-        print("🚀 JS로 버튼 강제 클릭 명령 전송...")
-        
-        # '통합로그인' 글자가 들어간 모든 요소를 찾아서 그 중 버튼 역할을 하는 놈을 클릭
         try:
-            # 1차 시도: 노란 버튼의 XPATH를 정확히 조준
-            login_btn = driver.find_element(By.XPATH, "//*[text()='통합로그인']")
+            login_btn = driver.find_element(By.XPATH, "//button[contains(text(), '통합로그인')]")
             driver.execute_script("arguments[0].click();", login_btn)
         except:
-            # 2차 시도: 실패하면 폼(Form) 자체를 제출해버림
-            print("⚠️ 버튼 클릭 실패 -> Form 강제 제출 시도")
-            driver.execute_script("document.forms[0].submit()")
+            pw_input.send_keys(Keys.RETURN)
 
-        print("⏳ 로그인 처리 대기 중 (15초)...")
-        time.sleep(15)
-        
-        # 성공 여부 확인 (URL 변경 체크)
-        print(f"📍 현재 URL: {driver.current_url}")
-        
-        driver.save_screenshot("3_popup_check.png")
+        print("⏳ 로그인 처리 대기 (10초)...")
+        time.sleep(10)
         close_popup(driver)
-        
-        driver.save_screenshot("4_login_complete.png")
+        print("✅ 로그인 완료")
         
     except Exception as e:
-        print(f"⚠️ 로그인 실패: {e}")
-        driver.save_screenshot("error_login.png")
+        print(f"⚠️ 로그인 중 오류: {e}")
 
 def get_school_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_final_js_v1")
+        geolocator = Nominatim(user_agent="hongik_final_screenshot_v1")
         query = f"서울 {region} {school_name}"
         location = geolocator.geocode(query)
         if not location: location = geolocator.geocode(f"{region} {school_name}")
@@ -128,13 +106,18 @@ def calculate_distance(coords1, coords2):
     except:
         return 9999
 
-def analyze_schools(driver, link):
+# --- [상세 페이지 분석 함수] ---
+def analyze_detail_page(driver):
+    print("--> 상세 페이지 분석 중...")
+    time.sleep(2)
+    
     try:
-        driver.get(link)
-        time.sleep(3)
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         tables = soup.select('table')
         results = []
+        
+        print(f"   -> 발견된 표 개수: {len(tables)}")
+
         for table in tables:
             rows = table.select('tr')
             for row in rows:
@@ -142,13 +125,19 @@ def analyze_schools(driver, link):
                 if len(cols) >= 3:
                     region = cols[1].get_text(strip=True)
                     school_name = cols[2].get_text(strip=True)
-                    coords = get_school_coords(school_name, region)
-                    if coords:
-                        km = calculate_distance(MY_HOME_COORDS, coords)
+                    
+                    if len(school_name) < 2 or "학교" in school_name:
+                         if "학교명" in school_name: continue
+
+                    school_coords = get_school_coords(school_name, region)
+                    if school_coords:
+                        km = calculate_distance(MY_HOME_COORDS, school_coords)
                         results.append({'name': school_name, 'region': region, 'km': km})
+        
         results.sort(key=lambda x: x['km'])
         return results
-    except:
+    except Exception as e:
+        print(f"   -> 분석 중 에러: {e}")
         return []
 
 async def send_message(text):
@@ -156,71 +145,91 @@ async def send_message(text):
     await bot.send_message(chat_id=CHAT_ID, text=text)
 
 def main():
-    if os.path.exists(FILE_PATH):
-        with open(FILE_PATH, "r", encoding="utf-8") as f:
-            sent_posts = f.read().splitlines()
-    else:
-        sent_posts = []
+    if not os.path.exists(FILE_PATH):
+        with open(FILE_PATH, "w", encoding="utf-8") as f: pass
 
-    print("🚀 JS 강제 클릭 봇 시작...")
+    with open(FILE_PATH, "r", encoding="utf-8") as f:
+        sent_posts = f.read().splitlines()
+
+    print("🚀 봇 시작 (상세화면 스크린샷 포함)")
     try:
         driver = get_browser()
-    except:
-        time.sleep(5)
-        driver = get_browser()
-    
+    except Exception as e:
+        print(f"브라우저 실행 실패: {e}")
+        return
+
     try:
         login_hongik(driver)
         
-        print(f"🌐 게시판 이동: {TARGET_URL}")
+        print(f"🌐 게시판 목록 이동: {TARGET_URL}")
         driver.get(TARGET_URL)
-        time.sleep(8)
-        driver.save_screenshot("5_board_list.png")
+        time.sleep(5)
+        
+        # 목록 화면도 찍어봅니다
+        driver.save_screenshot("list_view.png")
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         rows = soup.select('table tbody tr')
         if not rows: rows = soup.select('table tr')
         
-        print(f"📊 발견된 게시글 수: {len(rows)}개")
+        print(f"📊 목록에서 {len(rows)}개의 행 발견")
         
         new_posts_found = False
-        post_links = []
-
-        for row in rows:
-            link_tag = row.find('a')
-            if not link_tag: continue
-            title = link_tag.get_text(strip=True)
-            href = link_tag['href']
-            if "javascript" in href: continue 
-            link = BASE_URL + href if href.startswith('/') else href
+        
+        detail_buttons = driver.find_elements(By.XPATH, "//a[contains(text(), '상세보기')] | //button[contains(text(), '상세보기')] | //input[@value='상세보기']")
+        
+        for i, row in enumerate(rows):
+            if i >= len(detail_buttons): break
             
-            if title not in sent_posts:
-                post_links.append((title, link))
-
-        for title, link in post_links:
-            print(f"🔍 분석: {title}")
-            top_schools = analyze_schools(driver, link)
+            cols = row.select('td')
+            if len(cols) < 3: continue
             
-            msg = f"🔔 [새 공고]\n제목: {title}\n링크: {link}\n\n"
-            if top_schools:
-                msg += "📏 **직선거리 가까운 순 TOP 5**\n"
-                for i, s in enumerate(top_schools[:5], 1):
-                    msg += f"{i}. {s['name']} ({s['region']}) | {s['km']}km\n"
+            title = cols[1].get_text(strip=True)
+            if not title: title = cols[2].get_text(strip=True)
+
+            if title in sent_posts:
+                continue
+            
+            print(f"🔍 새 공고 발견! : {title}")
+            
+            current_buttons = driver.find_elements(By.XPATH, "//a[contains(text(), '상세보기')] | //button[contains(text(), '상세보기')] | //input[@value='상세보기']")
+            if i < len(current_buttons):
+                btn = current_buttons[i]
+                driver.execute_script("arguments[0].click();", btn)
+                
+                # 상세 페이지 로딩 대기
+                time.sleep(5)
+                
+                # 📸 [여기가 추가됨] 상세 페이지 찰칵!
+                screenshot_name = f"detail_view_{i}.png"
+                driver.save_screenshot(screenshot_name)
+                print(f"📸 상세 화면 저장됨: {screenshot_name}")
+                
+                top_schools = analyze_detail_page(driver)
+                
+                msg = f"🔔 [새 알바 공고]\n제목: {title}\n\n"
+                if top_schools:
+                    msg += "📏 **가까운 학교 TOP 5**\n"
+                    for idx, s in enumerate(top_schools[:5], 1):
+                        msg += f"{idx}. {s['name']} ({s['region']}) | {s['km']}km\n"
+                else:
+                    msg += "(학교 위치 정보 없음 또는 분석 실패)"
+
+                asyncio.run(send_message(msg))
+                sent_posts.append(title)
+                new_posts_found = True
+                
+                driver.back()
+                time.sleep(3)
             else:
-                msg += "(학교 목록 미발견)"
-
-            asyncio.run(send_message(msg))
-            sent_posts.append(title)
-            new_posts_found = True
-            driver.get(TARGET_URL)
-            time.sleep(2)
+                print("⚠️ 상세보기 버튼을 찾을 수 없음")
 
         if new_posts_found:
             with open(FILE_PATH, "w", encoding="utf-8") as f:
                 f.write("\n".join(sent_posts[-50:]))
-            print("업데이트 완료")
+            print("✅ 업데이트 완료")
         else:
-            msg = f"게시글 {len(rows)}개 발견됨. 새 공고 없음. (JS 클릭 버전 🟢)"
+            msg = "새로운 공고 없음 (봇 작동중 🟢)"
             asyncio.run(send_message(msg))
 
     except Exception as e:
