@@ -26,13 +26,21 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-          # ✅ 여기에 아이디/비번 추가됨
           HONGIK_ID: ${{ secrets.HONGIK_ID }}
           HONGIK_PW: ${{ secrets.HONGIK_PW }}
         run: |
           python main.py
 
-      - name: 결과 저장
+      # 📸 여기가 추가된 부분 (스크린샷 저장소)
+      - name: 스크린샷 결과 업로드 (디버깅용)
+        if: always() # 에러가 나도 무조건 실행해서 보여줘
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: *.png
+          retention-days: 1
+      
+      - name: 결과 텍스트 저장
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
