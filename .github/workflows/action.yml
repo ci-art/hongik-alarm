@@ -41,14 +41,6 @@ jobs:
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python main.py
 
-      - name: 스크린샷 결과 업로드
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-screenshots
-          path: "*.png"
-          retention-days: 1
-      
       - name: 결과 텍스트 저장
         run: |
           git config --global user.name "GitHub Action"
