@@ -35,6 +35,9 @@ jobs:
           HONGIK_PW: ${{ secrets.HONGIK_PW }}
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          # ✅ [추가됨] 주소와 좌표도 비밀 금고에서 가져옵니다!
+          MY_HOME_ADDRESS: ${{ secrets.MY_HOME_ADDRESS }}
+          MY_HOME_COORDS: ${{ secrets.MY_HOME_COORDS }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python main.py
 
@@ -50,14 +53,7 @@ jobs:
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-          
-          # ✅ [수정된 순서]
-          # 1. 봇이 작업한 내용을 먼저 '임시 저장(Commit)' 합니다.
           git add sent_posts.txt
           git commit -m "Update sent posts" || exit 0
-          
-          # 2. 그 상태에서 최신 파일을 받아와서 합칩니다(Rebase).
           git pull origin main --rebase
-          
-          # 3. 합쳐진 결과를 최종 업로드(Push) 합니다.
           git push
