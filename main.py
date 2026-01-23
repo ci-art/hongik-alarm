@@ -23,8 +23,16 @@ HONGIK_PW = os.environ.get('HONGIK_PW')
 NAVER_CLIENT_ID = os.environ.get('NAVER_CLIENT_ID')
 NAVER_CLIENT_SECRET = os.environ.get('NAVER_CLIENT_SECRET')
 
-MY_HOME_ADDRESS = "서울특별시 송파구 백제고분로 12길 8-26"
-MY_HOME_COORDS_FIXED = (37.5088, 127.0817) # 무료 지도용 고정 좌표
+# ✅ [보안 강화] 주소와 좌표를 금고(Secrets)에서 꺼내옵니다.
+MY_HOME_ADDRESS = os.environ.get('MY_HOME_ADDRESS')
+
+# 좌표 문자열("37.5,127.0")을 숫자로 변환
+coords_str = os.environ.get('MY_HOME_COORDS')
+if coords_str:
+    lat, lon = map(float, coords_str.split(','))
+    MY_HOME_COORDS_FIXED = (lat, lon)
+else:
+    MY_HOME_COORDS_FIXED = (0.0, 0.0) # 비상용 기본값
 
 TARGET_REGIONS = ["송파", "강남"]
 
@@ -47,7 +55,6 @@ def get_naver_coords(address):
         if data.get('addresses'):
             return f"{data['addresses'][0]['x']},{data['addresses'][0]['y']}"
         else:
-            print(f"⚠️ 네이버 주소 변환 실패: {data}")
             return None
     except:
         return None
@@ -65,7 +72,6 @@ def get_naver_driving(start, goal):
         data = response.json()
         if data['code'] == 0:
             summary = data['route']['trafast'][0]['summary']
-            # 분, km 반환
             return round(summary['duration'] / 60000), round(summary['distance'] / 1000, 1)
     except:
         pass
@@ -74,8 +80,7 @@ def get_naver_driving(start, goal):
 # --- [기능 2: 무료 지도 (비상용)] ---
 def get_free_coords(school_name, region):
     try:
-        geolocator = Nominatim(user_agent="hongik_hybrid_v1")
-        # 이름 보정 (중 -> 중학교)
+        geolocator = Nominatim(user_agent="hongik_hybrid_v2")
         if school_name.endswith("중") and not school_name.endswith("학교"): school_name += "학교"
         if school_name.endswith("고") and not school_name.endswith("학교"): school_name += "등학교"
         
@@ -94,17 +99,16 @@ def get_free_distance(coords1, coords2):
     except:
         return 9999
 
-# --- [핵심: 하이브리드 분석 함수] ---
+# --- [분석 함수] ---
 def analyze_smart(driver):
-    print("--> 🧠 스마트 분석 시작 (네이버 우선, 실패 시 무료 전환)")
+    print("--> 🧠 스마트 분석 시작...")
     time.sleep(3)
     
-    # 1. 네이버용 내 집 좌표 준비
     my_naver_coords = get_naver_coords(MY_HOME_ADDRESS)
     naver_active = True if my_naver_coords else False
     
     if not naver_active:
-        print("⚠️ 네이버 API 사용 불가 (키 오류 또는 한도 초과). 무료 모드로 전환합니다.")
+        print("⚠️ 네이버 API 사용 불가. 무료 모드 가동.")
 
     try:
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -119,7 +123,6 @@ def analyze_smart(driver):
                     region = cols[1].get_text(strip=True)
                     school_name = cols[2].get_text(strip=True)
                     
-                    # 지역 필터링
                     is_target = False
                     for target in TARGET_REGIONS:
                         if target in region:
@@ -127,7 +130,6 @@ def analyze_smart(driver):
                             break
                     if not is_target: continue
 
-                    # --- [Plan A: 네이버 지도 시도] ---
                     success_naver = False
                     if naver_active:
                         full_name = f"서울 {region} {school_name}"
@@ -143,7 +145,6 @@ def analyze_smart(driver):
                                 })
                                 success_naver = True
                     
-                    # --- [Plan B: 무료 지도 시도 (네이버 실패 시)] ---
                     if not success_naver:
                         school_free_coords = get_free_coords(school_name, region)
                         if school_free_coords:
@@ -162,7 +163,7 @@ def analyze_smart(driver):
         print(f"분석 에러: {e}")
         return []
 
-# --- [브라우저 및 로그인 (성공한 코드 유지)] ---
+# --- [브라우저 및 로그인] ---
 def get_browser():
     display = Display(visible=0, size=(1920, 1080))
     display.start()
@@ -218,7 +219,7 @@ def main():
     with open(FILE_PATH, "r", encoding="utf-8") as f:
         sent_posts = f.read().splitlines()
 
-    print("🚀 하이브리드 알바 봇 시작")
+    print("🚀 시크릿 모드 봇 시작 (주소 숨김)")
     try:
         driver = get_browser()
     except:
@@ -250,8 +251,6 @@ def main():
                     if btns:
                         driver.execute_script("arguments[0].click();", btns[0])
                         time.sleep(3)
-                        
-                        # 하이브리드 분석
                         top_schools = analyze_smart(driver)
                         
                         msg = f"🔔 [최신 알바 공고]\n제목: {title}\n\n"
