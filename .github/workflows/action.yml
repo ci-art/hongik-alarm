@@ -25,22 +25,18 @@ jobs:
 
       - name: 라이브러리 설치
         run: |
-          pip install requests beautifulsoup4 python-telegram-bot geopy selenium webdriver-manager undetected-chromedriver pyvirtualdisplay
+          pip install beautifulsoup4 python-telegram-bot selenium undetected-chromedriver pyvirtualdisplay
 
       - name: 크롤링 코드 실행
         env:
+          # 👇 딱 4개의 핵심 열쇠만 챙겨갑니다!
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           HONGIK_ID: ${{ secrets.HONGIK_ID }}
           HONGIK_PW: ${{ secrets.HONGIK_PW }}
-          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
-          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
-          # ✅ [추가됨] 주소와 좌표도 비밀 금고에서 가져옵니다!
-          MY_HOME_ADDRESS: ${{ secrets.MY_HOME_ADDRESS }}
-          MY_HOME_COORDS: ${{ secrets.MY_HOME_COORDS }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python main.py
-
+      
       - name: 결과 텍스트 저장
         run: |
           git config --global user.name "GitHub Action"
