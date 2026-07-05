@@ -25,11 +25,10 @@ jobs:
 
       - name: 라이브러리 설치
         run: |
-          pip install beautifulsoup4 python-telegram-bot selenium undetected-chromedriver pyvirtualdisplay
+          pip install beautifulsoup4 python-telegram-bot selenium webdriver-manager pyvirtualdisplay
 
       - name: 크롤링 코드 실행
         env:
-          # 👇 딱 4개의 핵심 열쇠만 챙겨갑니다!
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           HONGIK_ID: ${{ secrets.HONGIK_ID }}
