@@ -4,7 +4,9 @@ import asyncio
 import time
 from bs4 import BeautifulSoup
 
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -24,11 +26,23 @@ FILE_PATH = "sent_posts.txt"
 def get_browser():
     display = Display(visible=0, size=(1920, 1080))
     display.start()
-    options = uc.ChromeOptions()
+    
+    options = webdriver.ChromeOptions()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    return uc.Chrome(options=options, headless=False, use_subprocess=False)
+    options.add_argument("--disable-blink-features=AutomationControlled") # 봇 탐지 회피
+    
+    # 💡 핵심: 깃허브 서버의 크롬 버전에 맞는 조종사를 자동으로 섭외함
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    
+    # 봇이 아닌 척 위장
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": """ Object.defineProperty(navigator, 'webdriver', { get: () => undefined }) """
+    })
+    
+    return driver
 
 def close_popup(driver):
     time.sleep(2)
@@ -76,7 +90,7 @@ def main():
     with open(FILE_PATH, "r", encoding="utf-8") as f:
         sent_posts = f.read().splitlines()
 
-    print("🚀 홍익대 초간단 새 글 알림 봇")
+    print("🚀 홍익대 초간단 새 글 알림 봇 (버전 자동맞춤 적용)")
     try:
         driver = get_browser()
     except Exception as e:
@@ -101,15 +115,12 @@ def main():
                 if not title: title = cols[2].get_text(strip=True)
                 print(f"🔍 최신글 확인: {title}")
 
-                # 새로운 글인지 확인
                 if title not in sent_posts:
                     print("🆕 새로운 글 발견! 텔레그램으로 보냅니다.")
                     
-                    # 텔레그램 메시지 구성
                     msg = f"🔔 [새로운 알바 공고 등록]\n\n📌 제목: {title}\n\n👉 링크 들어가서 확인하기:\n{TARGET_URL}"
                     asyncio.run(send_message(msg))
                     
-                    # 장부에 기록
                     sent_posts.append(title)
                     with open(FILE_PATH, "w", encoding="utf-8") as f:
                         f.write("\n".join(sent_posts[-50:]))
